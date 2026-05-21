@@ -1,0 +1,24 @@
+FROM corvax19/php5.3.10-apache2.2.22-ubuntu14
+
+# Ubuntu 14.04 (trusty) (and sometimes 12.04 precise in older bases) are EOL.
+# Switch any archive/security mirrors to old-releases so apt-get works in 2025/2026.
+RUN sed -i \
+      -e 's|http://[a-zA-Z0-9.-]*archive.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
+      -e 's|http://[a-zA-Z0-9.-]*security.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
+      -e 's|http://ports.ubuntu.com/ubuntu-ports|http://old-releases.ubuntu.com/ubuntu|g' \
+      /etc/apt/sources.list \
+ && apt-get -o Acquire::Check-Valid-Until=false update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      fontconfig \
+      libxrender1 \
+      libxext6 \
+      libfontconfig1 \
+      xfonts-base \
+      xfonts-75dpi \
+ && (apt-get install -y --no-install-recommends fonts-dejavu-core fonts-liberation || apt-get install -y --no-install-recommends ttf-dejavu ttf-liberation || apt-get install -y --no-install-recommends fonts-dejavu fonts-liberation) \
+ && apt-get install -y --no-install-recommends wkhtmltopdf \
+ && rm -rf /var/lib/apt/lists/*
+
+# Optional: make sure wkhtmltopdf is on PATH and executable (sanity).
+RUN command -v wkhtmltopdf && wkhtmltopdf --version
