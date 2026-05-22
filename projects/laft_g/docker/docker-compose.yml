@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  db:
+    image: ardhitama/postgres12-partman-43-uuid
+    container_name: DuePostgres
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - DuePostgresData:/var/lib/postgresql/data
+
+  app:
+    image: nimmis/apache-php7
+    container_name: due_php_apache
+    hostname: due_php_apache
+    ports:
+      - "${APP_PORT:-8081}:80"
+    volumes:
+      # Proyecto principal
+      - ${PROJECT_ROOT:-C:/Users/rinco/laft_g}:/var/www/html/laft_g
+      # Librerías compartidas
+      - C:/Users/rinco/basura:/var/www/html/basura
+      - C:/Users/rinco/jQuery:/var/www/html/jQuery
+      - C:/Users/rinco/tcpdf:/var/www/html/tcpdf
+      - C:/Users/rinco/bootstrap:/var/www/html/bootstrap
+      - C:/Users/rinco/Classes:/var/www/html/Classes
+      - C:/Users/rinco/zpcal:/var/www/html/zpcal
+      - C:/Users/rinco/Highcharts:/var/www/html/Highcharts
+      - C:/Users/rinco/echarts:/var/www/html/echarts
+      - C:/Users/rinco/jpgraph4:/var/www/html/jpgraph4
+      - C:/Users/rinco/nusoap:/var/www/html/nusoap
+
+volumes:
+  DuePostgresData:
+    driver: local

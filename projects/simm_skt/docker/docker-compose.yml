@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  db:
+    image: teikadev/postgres13-partman
+    container_name: AdmsimPostgres
+    ports:
+      - "${DB_PORT:-5435}:5432"
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - ${DB_DATA_PATH:-AdmsimPostgresData}:/var/lib/postgresql/data
+
+  app:
+    image: nimmis/apache-php7
+    container_name: admsim_php_apache
+    hostname: admsim_php_apache
+    ports:
+      - "${APP_PORT:-8083}:80"
+    volumes:
+      # Proyecto principal
+      - ${PROJECT_ROOT:-C:/Users/rinco/simm_skt}:/var/www/html/simm_skt
+      # Librerías compartidas
+      - C:/Users/rinco/basura:/var/www/html/basura
+      - C:/Users/rinco/jQuery:/var/www/html/jQuery
+      - C:/Users/rinco/tcpdf:/var/www/html/tcpdf
+      - C:/Users/rinco/bootstrap:/var/www/html/bootstrap
+      - C:/Users/rinco/Classes:/var/www/html/Classes
+      - C:/Users/rinco/zpcal:/var/www/html/zpcal
+      - C:/Users/rinco/Highcharts:/var/www/html/Highcharts
+      - C:/Users/rinco/echarts:/var/www/html/echarts
+      - C:/Users/rinco/nusoap:/var/www/html/nusoap
+
+volumes:
+  # Por defecto usa volumen interno, pero se puede sobreescribir en .env por path de disco externo
+  AdmsimPostgresData:
+    driver: local
