@@ -1,0 +1,17 @@
+services:
+  citus:
+    image: citusdata/citus:12.1
+    container_name: citus_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=bigBleu5
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - citus_data_container:/var/lib/postgresql/data
+      # Ajustamos la sintaxis para que Windows y Docker no se confundan con el disco K
+      - /k/citus_data/backup:/docker-entrypoint-initdb.d/backup_dir
+    restart: unless-stopped
+
+volumes:
+  citus_data_container:

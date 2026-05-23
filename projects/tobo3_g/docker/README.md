@@ -11,4 +11,13 @@ docker-compose up -d
 
 ## Smoke test
 
-Incluye un test simple que valide lo “crítico” (p. ej. `wkhtmltopdf --version`).
+1. **Verificar Base de Datos**:
+```bash
+docker exec -it Tobo3Postgres psql -U postgres -c "SELECT version();"
+```
+
+2. **Verificar PHP 5.3**:
+```bash
+docker exec -it tobo3_php_apache php -v
+```
+Acceder a: `http://localhost:8082/tobo3_g`
