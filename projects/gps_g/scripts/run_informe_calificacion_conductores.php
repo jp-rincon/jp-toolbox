@@ -7,7 +7,7 @@
  *   `framework/modulos/CalificacionConductores/InformeCalificacion/informe-json.php`.
  *
  * Uso:
- *   php scripts/run_informe_calificacion_conductores.php --usuario=C0A284 --desde="2026-03-01 00:00:00" --hasta="2026-03-31 23:59:59" --tipo=actividad --formato=csv --csvDelimiter=";" --csvMetaLine=0 --chunkDays=1 --queryTimeout=120 --skipChunksFile=/tmp/marzo2026_done.txt --out=/tmp/info_calificacion_Marzo2026.csv 2>/tmp/marzo2026_progress.log
+ *   php scripts/run_informe_calificacion_conductores.php --usuario=C0A284 --desde="2026-03-01 00:00:00" --hasta="2026-03-31 23:59:59" --tipo=actividad --formato=csv --csvDelimiter=";" --csvMetaLine=0 --chunkDays=1 --queryTimeout=120 --skipChunksFile=scripts/marzo2026_done.txt --ignoreCPs=204727 --ignoreCPsDates=2026-03-08,2026-03-09,2026-03-10 --out=/tmp/info_calificacion_Marzo2026.csv 2>/tmp/marzo2026_progress.log
  *
  * Opcionales:
  *   --tipo=actividad|calificacion (default: "actividad")
@@ -80,7 +80,11 @@ $opts = getopt('', array(
     'chunkDays::',
     'queryTimeout::',
     'skipChunksFile::',
+    'ignoreCPs::',
+    'ignoreCPsDates::',
 ));
+
+
 
 $usuarioLogin = isset($opts['usuario']) ? trim($opts['usuario']) : '';
 $desde        = isset($opts['desde'])   ? trim($opts['desde'])   : '';
@@ -157,15 +161,59 @@ if (isset($opts['queryTimeout']) && $opts['queryTimeout'] !== '') {
     $queryTimeout = (int)$opts['queryTimeout'];
 }
 
-$skipChunksFile = isset($opts['skipChunksFile']) ? trim((string)$opts['skipChunksFile']) : '';
-$skipDates = array();
-if ($skipChunksFile !== '' && file_exists($skipChunksFile)) {
-    $lines = file($skipChunksFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $l) {
-        $skipDates[trim($l)] = true;
+$ignoreCPsOpt = isset($opts['ignoreCPs']) ? trim((string)$opts['ignoreCPs']) : '';
+$ignoreCPs = array();
+if ($ignoreCPsOpt !== '') {
+    $parts = explode(',', $ignoreCPsOpt);
+    foreach ($parts as $p) {
+        $p = trim($p);
+        if (is_numeric($p)) {
+            $ignoreCPs[] = (int)$p;
+        }
     }
-    progress("Reanudando: " . count($skipDates) . " día(s) ya procesados en $skipChunksFile");
+    progress("CPs configurados para ignorar: " . implode(', ', $ignoreCPs));
 }
+
+$ignoreCPsDatesOpt = isset($opts['ignoreCPsDates']) ? trim((string)$opts['ignoreCPsDates']) : '';
+$ignoreCPsDates = array();
+if ($ignoreCPsDatesOpt !== '') {
+    $parts = explode(',', $ignoreCPsDatesOpt);
+    foreach ($parts as $p) {
+        $p = trim($p);
+        if ($p !== '') {
+            $ignoreCPsDates[$p] = true;
+        }
+    }
+    progress("Fechas específicas para exclusión de CPs: " . implode(', ', array_keys($ignoreCPsDates)));
+}
+
+
+$skipChunksFile = isset($opts['skipChunksFile']) ? trim((string)$opts['skipChunksFile']) : '';
+
+$skipDates = array();
+if ($skipChunksFile !== '') {
+    $dir = dirname($skipChunksFile);
+    if ($dir !== '.' && $dir !== '' && !is_dir($dir)) {
+        @mkdir($dir, 0777, true);
+    }
+    if (file_exists($skipChunksFile)) {
+        $lines = file($skipChunksFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($lines as $l) {
+            $skipDates[trim($l)] = true;
+        }
+        progress("Reanudando: " . count($skipDates) . " día(s) ya procesados en $skipChunksFile");
+    } else {
+        // Validar que se pueda crear y escribir en la ruta
+        $testWrite = @file_put_contents($skipChunksFile, '');
+        if ($testWrite === false) {
+            progress("⚠ ADVERTENCIA: No se puede escribir en el archivo de reanudación: $skipChunksFile. Se desactivará la persistencia de progreso.");
+            $skipChunksFile = '';
+        } else {
+            @unlink($skipChunksFile); // Limpiar archivo de prueba
+        }
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // Bootstrap mínimo del framework
@@ -221,7 +269,14 @@ progress("Conexión OK.");
 if ($queryTimeout > 0) {
     $timeoutMs = $queryTimeout * 1000;
     @pg_query($connTest, "SET statement_timeout = {$timeoutMs}");
-    progress("statement_timeout configurado: {$queryTimeout}s por query.");
+    
+    // También aplicar a la conexión ADODB de $general si existe
+    $connAdo = $general->con('adodb');
+    if ($connAdo) {
+        @$connAdo->Execute("SET statement_timeout = {$timeoutMs}");
+    }
+    
+    progress("statement_timeout configurado: {$queryTimeout}s por query (Postgres y ADODB).");
 } else {
     progress("statement_timeout: sin límite (--queryTimeout=0).");
 }
@@ -382,7 +437,36 @@ foreach ($chunks as $chunkIdx => $chunk) {
 
     try {
         if ($tipo === 'actividad') {
-            $raw = $cc->getConductoresInicio($usuarioOperacion, $chunk['desde'], $chunk['hasta']);
+            $applyIgnoreCPs = array();
+            if (!empty($ignoreCPs)) {
+                $chunkDate = substr($chunk['desde'], 0, 10);
+                if (empty($ignoreCPsDates) || isset($ignoreCPsDates[$chunkDate])) {
+                    $applyIgnoreCPs = $ignoreCPs;
+                }
+            }
+
+            // Compensar el desfase de zona horaria ($hora_gmt) que getConductoresInicio aplica internamente.
+            // Si la base de datos ya está en hora local y $hora_gmt es -5, getConductoresInicio restará 5 horas al rango.
+            // Compensamos sumando 5 horas al rango de entrada para que la consulta final coincida exactamente con la hora local.
+            global $hora_gmt;
+            $desdeQuery = $chunk['desde'];
+            $hastaQuery = $chunk['hasta'];
+            if (isset($hora_gmt) && $hora_gmt !== 0) {
+                $shiftHours = -((int)$hora_gmt);
+                
+                $dtDesdeComp = new DateTime($chunk['desde']);
+                $dtDesdeComp->modify(($shiftHours >= 0 ? '+' : '') . $shiftHours . " hours");
+                $desdeQuery = $dtDesdeComp->format('Y-m-d H:i:s');
+
+                $dtHastaComp = new DateTime($chunk['hasta']);
+                $dtHastaComp->modify(($shiftHours >= 0 ? '+' : '') . $shiftHours . " hours");
+                $hastaQuery = $dtHastaComp->format('Y-m-d H:i:s');
+            }
+
+            $raw = $cc->getConductoresInicio($usuarioOperacion, $desdeQuery, $hastaQuery, $applyIgnoreCPs);
+
+
+
             if (is_array($raw)) {
                 foreach ($raw as $row) {
                     $datos[] = $row;
@@ -422,6 +506,19 @@ foreach ($chunks as $chunkIdx => $chunk) {
         @pg_query($connTest, "ROLLBACK");
         if ($queryTimeout > 0) {
             @pg_query($connTest, "SET statement_timeout = " . ($queryTimeout * 1000));
+        }
+    }
+
+    // Limpiar también el estado de error de ADODB
+    $connAdo = $general->con('adodb');
+    if ($connAdo) {
+        $adoError = $connAdo->ErrorMsg();
+        if ($adoError) {
+            $chunkError = ($chunkError ? $chunkError . " | " : "") . "ADODB: " . $adoError;
+            @$connAdo->Execute("ROLLBACK");
+            if ($queryTimeout > 0) {
+                @$connAdo->Execute("SET statement_timeout = " . ($queryTimeout * 1000));
+            }
         }
     }
 
@@ -477,7 +574,11 @@ foreach ($chunks as $chunkIdx => $chunk) {
 
     // Registrar fecha procesada en skipChunksFile
     if ($skipChunksFile !== '' && $chunkError === null) {
-        file_put_contents($skipChunksFile, $dateKey . "\n", FILE_APPEND | LOCK_EX);
+        $dir = dirname($skipChunksFile);
+        if ($dir !== '.' && $dir !== '' && !is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
+        @file_put_contents($skipChunksFile, $dateKey . "\n", FILE_APPEND | LOCK_EX);
     }
 
     unset($datos); // liberar memoria del chunk
