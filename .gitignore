@@ -14,3 +14,5 @@ Thumbs.db
 tmp/
 .tmp/
 
+# Datasets / Large files
+*.pbf

@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  osm_gis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: osm_centroamerica_gis
+    environment:
+      POSTGRES_DB: osm_centroamerica
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5434:5432"
+    volumes:
+      - osm_data:/var/lib/postgresql/data
+      - ../scripts:/scripts
+      - ./data:/data
+    restart: unless-stopped
+
+volumes:
+  osm_data:
