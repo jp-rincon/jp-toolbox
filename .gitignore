@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+aux_ssl.txt
 
 # OS / editor
 .DS_Store

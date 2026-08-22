@@ -1,0 +1,44 @@
+{
+  "WacsPath": "C:\\win-acme\\wacs.exe",
+  "Servers": [
+    {
+      "Name": "GPS Teleint",
+      "Domain": "gps.teleint.co",
+      "SshUser": "jprincon",
+      "SshHost": "gps.teleint.co",
+      "SshPort": 22121,
+      "WebRoot": "/var/www/tobo2",
+      "RemoteCertDir": "/etc/httpd/cert-teleint",
+      "RemoteCertFile": "certificate.crt",
+      "RemoteKeyFile": "private.key",
+      "RemoteChainFile": "ca-bundle.crt",
+      "ReloadCommand": "sudo service httpd reload"
+    },
+    {
+      "Name": "HyM Keyro Honshutech",
+      "Domain": "keyro.honshutech.com",
+      "SshUser": "root",
+      "SshHost": "keyro.honshutech.com",
+      "SshPort": 22114,
+      "WebRoot": "/var/www/html",
+      "RemoteCertDir": "/etc/pki/tls",
+      "RemoteCertFile": "/etc/pki/tls/certs/certificate.crt",
+      "RemoteKeyFile": "/etc/pki/tls/private/private.key",
+      "RemoteChainFile": "/etc/pki/tls/certs/ca-bundle",
+      "ReloadCommand": "sudo service httpd reload"
+    },
+    {
+      "Name": "Ecolab",
+      "Domain": "ecolab.net.co",
+      "SshUser": "root",
+      "SshHost": "ecolab.net.co",
+      "SshPort": 22149,
+      "WebRoot": "/var/www/html",
+      "RemoteCertDir": "/etc/pki/tls",
+      "RemoteCertFile": "/etc/pki/tls/certs/certificate.crt",
+      "RemoteKeyFile": "/etc/pki/tls/private/private.key",
+      "RemoteChainFile": "/etc/pki/tls/certs/ca-bundle",
+      "ReloadCommand": "sudo service httpd reload"
+    }
+  ]
+}
