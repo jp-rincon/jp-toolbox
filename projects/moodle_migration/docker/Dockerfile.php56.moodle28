@@ -1,0 +1,55 @@
+# Dockerfile para Moodle 2.8.2 (Línea Base)
+# PHP 5.6 con soporte de MySQL y extensiones requeridas por Moodle
+FROM php:5.6-apache
+
+# Ajuste de repositorios Debian archivados para PHP 5.6
+RUN echo "deb http://archive.debian.org/debian stretch main" > /etc/apt/sources.list && \
+    echo "deb http://archive.debian.org/debian-security stretch/updates main" >> /etc/apt/sources.list && \
+    echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until && \
+    echo 'Acquire::AllowInsecureRepositories "true";' >> /etc/apt/apt.conf.d/99insecure
+
+# Instalación de dependencias del sistema y librerías
+RUN apt-get update && apt-get install -y --allow-unauthenticated \
+        libfreetype6-dev \
+        libjpeg62-turbo-dev \
+        libpng-dev \
+        libicu-dev \
+        libxml2-dev \
+        libcurl4-openssl-dev \
+        libzip-dev \
+        unzip \
+        git \
+        nano \
+        mysql-client \
+    && docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/ \
+    && docker-php-ext-install -j$(nproc) \
+        mysqli \
+        mysql \
+        pdo_mysql \
+        gd \
+        intl \
+        xmlrpc \
+        soap \
+        zip \
+        opcache \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Configuración recomendada de PHP para Moodle
+RUN { \
+        echo 'max_execution_time = 3600'; \
+        echo 'memory_limit = 512M'; \
+        echo 'post_max_size = 512M'; \
+        echo 'upload_max_filesize = 512M'; \
+        echo 'max_input_vars = 5000'; \
+        echo 'date.timezone = UTC'; \
+        echo 'opcache.enable = 1'; \
+        echo 'opcache.memory_consumption = 128'; \
+        echo 'opcache.max_accelerated_files = 10000'; \
+    } > /usr/local/etc/php/conf.d/moodle-custom.ini
+
+# Habilitar mod_rewrite de Apache
+RUN a2enmod rewrite
+
+WORKDIR /var/www/html
+
+EXPOSE 80

@@ -1,0 +1,19 @@
+{
+  "WacsPath": "C:\\win-acme\\wacs.exe",
+  "Servers": [
+    {
+      "Name": "Nombre del Servidor",
+      "Domain": "midominio.com",
+      "SshUser": "root",
+      "SshPassword": "TU_CONTRASEÑA_AQUI",
+      "SshHost": "midominio.com",
+      "SshPort": 22,
+      "WebRoot": "/var/www/html",
+      "RemoteCertDir": "/etc/httpd/ssl",
+      "RemoteCertFile": "certificate.crt",
+      "RemoteKeyFile": "private.key",
+      "RemoteChainFile": "ca-bundle.crt",
+      "ReloadCommand": "sudo service httpd reload"
+    }
+  ]
+}

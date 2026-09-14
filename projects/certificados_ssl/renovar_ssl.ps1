@@ -11,28 +11,13 @@ if (-not (Test-Path $ConfigFile)) {
 }
 
 $config = Get-Content -Path $ConfigFile | ConvertFrom-Json
-$wacsBin = $config.WacsPath
 
-# Verificar wacs.exe
-if (-not (Get-Command $wacsBin -ErrorAction SilentlyContinue)) {
-    $commonPaths = @(
-        "C:\win-acme\wacs.exe",
-        "C:\Program Files\win-acme\wacs.exe",
-        "$env:LOCALAPPDATA\win-acme\wacs.exe"
-    )
-    $found = $false
-    foreach ($p in $commonPaths) {
-        if (Test-Path $p) {
-            $wacsBin = $p
-            $found = $true
-            break
-        }
-    }
-    if (-not $found) {
-        Write-Host "[!] ADVERTENCIA: No se encontró 'wacs.exe' automáticamente." -ForegroundColor Yellow
-        Write-Host "    Asegúrate de configurar la ruta correcta de 'wacs.exe' en config.json" -ForegroundColor Gray
-    }
-}
+# Runner de Certbot sin restricción de administrador
+$certbotRunner = Join-Path $PSScriptRoot "run_certbot.py"
+
+# Helper para SSH_ASKPASS con contraseñas
+$askpassBat = Join-Path $env:TEMP "ssh_askpass.bat"
+"@echo %SSH_PASS%" | Set-Content -Path $askpassBat -Force
 
 # Filtrar servidores a procesar
 $targetServers = @()
@@ -54,6 +39,17 @@ if ($All) {
 # Procesar cada servidor
 foreach ($srv in $targetServers) {
     $sshPort = if ($srv.SshPort) { $srv.SshPort } else { 22 }
+
+    # Configurar autenticación por contraseña vía SSH_ASKPASS
+    if ($srv.SshPassword) {
+        $env:SSH_ASKPASS         = $askpassBat
+        $env:SSH_ASKPASS_REQUIRE = "force"
+        $env:SSH_PASS            = $srv.SshPassword
+    } else {
+        $env:SSH_ASKPASS         = $null
+        $env:SSH_ASKPASS_REQUIRE = $null
+        $env:SSH_PASS            = $null
+    }
 
     Write-Host "`n========================================================" -ForegroundColor Cyan
     Write-Host " PROCESANDO SSL PARA: $($srv.Name) ($($srv.Domain))" -ForegroundColor Green
@@ -80,102 +76,72 @@ foreach ($srv in $targetServers) {
     $remoteKeyPath   = Resolve-RemotePath $srv.RemoteCertDir $srv.RemoteKeyFile "private.key"
     $remoteChainPath = Resolve-RemotePath $srv.RemoteCertDir $srv.RemoteChainFile "ca-bundle.crt"
 
-    # Carpeta temporal local para validación filesystem
-    $tempChallengeRoot = Join-Path $PSScriptRoot "temp_challenge"
-    $acmeChallengeDir  = Join-Path $tempChallengeRoot ".well-known\acme-challenge"
-    if (-not (Test-Path $acmeChallengeDir)) {
-        New-Item -ItemType Directory -Path $acmeChallengeDir -Force | Out-Null
-    }
+    Write-Host "[1/3] Generando y validando certificado con Certbot..." -ForegroundColor Cyan
 
-    Write-Host "[1/4] Activando monitor de subida SCP automática..." -ForegroundColor Cyan
-    
-    # Configurar FileSystemWatcher para subir automáticamente el token cuando wacs lo cree
-    $watcher = New-Object System.IO.FileSystemWatcher
-    $watcher.Path = $acmeChallengeDir
-    $watcher.Filter = "*.*"
-    $watcher.IncludeSubdirectories = $false
-    $watcher.EnableRaisingEvents = $true
+    $authHookBat  = Join-Path $PSScriptRoot "run_auth_hook.bat"
+    $cleanHookBat = Join-Path $PSScriptRoot "run_cleanup_hook.bat"
+    $configDir    = Join-Path $PSScriptRoot "certbot\config"
+    $workDir      = Join-Path $PSScriptRoot "certbot\work"
+    $logsDir      = Join-Path $PSScriptRoot "certbot\logs"
 
-    $action = {
-        $filePath = $Event.SourceEventArgs.FullPath
-        $fileName = $Event.SourceEventArgs.Name
-        $msgData  = $Event.MessageData
-
-        Write-Host "`n[+] Token de desafío detectado: $fileName" -ForegroundColor Yellow
-        Write-Host "    Asegurando directorio remoto en puerto $($msgData.Port)..." -ForegroundColor Gray
-        ssh -o StrictHostKeyChecking=no -p $msgData.Port "$($msgData.User)@$($msgData.Host)" "mkdir -p '$($msgData.WebRoot)/.well-known/acme-challenge'"
-
-        Write-Host "    Subiendo token por SCP a $($msgData.Host):$($msgData.WebRoot)/.well-known/acme-challenge/$fileName ..." -ForegroundColor Yellow
-        scp -o StrictHostKeyChecking=no -P $msgData.Port "$filePath" "$($msgData.User)@$($msgData.Host):$($msgData.WebRoot)/.well-known/acme-challenge/$fileName"
-        Write-Host "[✓] Token subido con éxito al servidor remoto!" -ForegroundColor Green
-    }
-
-    $eventData = @{
-        Port    = $sshPort
-        User    = $srv.SshUser
-        Host    = $srv.SshHost
-        WebRoot = $srv.WebRoot
-    }
-
-    $eventSub = Register-ObjectEvent $watcher Created -Action $action -MessageData $eventData
-
-    Write-Host "[2/4] Solicitando certificado a Let's Encrypt vía wacs.exe ..." -ForegroundColor Cyan
-
-    $wacsArgs = @(
-        "--target", "manual",
-        "--host", $srv.Domain,
-        "--validation", "filesystem",
-        "--webroot", "$tempChallengeRoot",
-        "--store", "pemfiles",
-        "--pemfilespath", "$outputDir",
-        "--accepttos"
+    $certbotArgs = @(
+        $certbotRunner,
+        "certonly",
+        "--manual",
+        "--preferred-challenges", "http",
+        "-d", $srv.Domain,
+        "--manual-auth-hook", "`"$authHookBat`"",
+        "--manual-cleanup-hook", "`"$cleanHookBat`"",
+        "--config-dir", "`"$configDir`"",
+        "--work-dir", "`"$workDir`"",
+        "--logs-dir", "`"$logsDir`"",
+        "--agree-tos",
+        "-m", "rincon.juanpablo@gmail.com",
+        "--non-interactive"
     )
 
-    Write-Host "    Comando: $wacsBin $($wacsArgs -join ' ')" -ForegroundColor Gray
+    Write-Host "    Ejecutando: python $($certbotArgs -join ' ')" -ForegroundColor Gray
+    $proc = Start-Process -FilePath "python" -ArgumentList $certbotArgs -Wait -NoNewWindow -PassThru
 
-    # Ejecutar wacs
-    $proc = Start-Process -FilePath $wacsBin -ArgumentList $wacsArgs -Wait -NoNewWindow -PassThru
+    $liveDir = Join-Path $configDir "live\$($srv.Domain)"
+    $fullchainFile = Join-Path $liveDir "fullchain.pem"
+    $privkeyFile   = Join-Path $liveDir "privkey.pem"
+    $chainFile     = Join-Path $liveDir "chain.pem"
 
-    # Limpiar monitor de eventos
-    Unregister-Event -SourceIdentifier $eventSub.Name -ErrorAction SilentlyContinue
-    $watcher.Dispose()
+    if (Test-Path $fullchainFile) {
+        Write-Host "`n[✓] ¡Certificado obtenido exitosamente por Certbot!" -ForegroundColor Green
+        
+        # Guardar copia en output local
+        Copy-Item -Path $fullchainFile -Destination (Join-Path $outputDir "fullchain.pem") -Force
+        Copy-Item -Path $privkeyFile -Destination (Join-Path $outputDir "privkey.pem") -Force
+        if (Test-Path $chainFile) {
+            Copy-Item -Path $chainFile -Destination (Join-Path $outputDir "chain.pem") -Force
+        }
 
-    if ($proc.ExitCode -eq 0 -or (Test-Path "$outputDir\*key*.pem") -or (Test-Path "$outputDir\*.crt") -or (Test-Path "$outputDir\*.pem")) {
-        Write-Host "`n[✓] Certificado obtenido correctamente en $outputDir" -ForegroundColor Green
-    } else {
-        Write-Host "`n[!] ADVERTENCIA: wacs.exe finalizó con código $($proc.ExitCode)." -ForegroundColor Yellow
-    }
-
-    # Despliegue remoto si existen archivos en outputDir
-    Write-Host "`n[3/4] Desplegando archivos de certificado a $($srv.SshHost) (Puerto $sshPort)..." -ForegroundColor Cyan
-    
-    $crtFile   = Get-ChildItem -Path $outputDir -Include "*-crt.pem","*.crt" -Recurse | Select-Object -First 1
-    $keyFile   = Get-ChildItem -Path $outputDir -Include "*-key.pem","*.key" -Recurse | Select-Object -First 1
-    $chainFile = Get-ChildItem -Path $outputDir -Include "*-chain.pem","ca-bundle.crt" -Recurse | Select-Object -First 1
-
-    if ($crtFile -and $keyFile) {
-        # Asegurar directorio remoto de destino
+        # Despliegue remoto
+        Write-Host "`n[2/3] Desplegando archivos de certificado a $($srv.SshHost) (Puerto $sshPort)..." -ForegroundColor Cyan
+        
         $remoteCertFolder = [System.IO.Path]::GetDirectoryName($remoteCertPath).Replace('\','/')
         ssh -o StrictHostKeyChecking=no -p $sshPort "$($srv.SshUser)@$($srv.SshHost)" "mkdir -p '$remoteCertFolder'"
 
-        Write-Host "    Subiendo certificado: $($crtFile.Name) -> $remoteCertPath" -ForegroundColor Yellow
-        scp -o StrictHostKeyChecking=no -P $sshPort "$($crtFile.FullName)" "$($srv.SshUser)@$($srv.SshHost):$remoteCertPath"
+        Write-Host "    Subiendo certificado: fullchain.pem -> $remoteCertPath" -ForegroundColor Yellow
+        scp -o StrictHostKeyChecking=no -P $sshPort "$fullchainFile" "$($srv.SshUser)@$($srv.SshHost):$remoteCertPath"
 
-        Write-Host "    Subiendo llave privada: $($keyFile.Name) -> $remoteKeyPath" -ForegroundColor Yellow
-        scp -o StrictHostKeyChecking=no -P $sshPort "$($keyFile.FullName)" "$($srv.SshUser)@$($srv.SshHost):$remoteKeyPath"
+        Write-Host "    Subiendo llave privada: privkey.pem -> $remoteKeyPath" -ForegroundColor Yellow
+        scp -o StrictHostKeyChecking=no -P $sshPort "$privkeyFile" "$($srv.SshUser)@$($srv.SshHost):$remoteKeyPath"
 
-        if ($chainFile) {
-            Write-Host "    Subiendo cadena intermedia: $($chainFile.Name) -> $remoteChainPath" -ForegroundColor Yellow
-            scp -o StrictHostKeyChecking=no -P $sshPort "$($chainFile.FullName)" "$($srv.SshUser)@$($srv.SshHost):$remoteChainPath"
+        if (Test-Path $chainFile) {
+            Write-Host "    Subiendo cadena intermedia: chain.pem -> $remoteChainPath" -ForegroundColor Yellow
+            scp -o StrictHostKeyChecking=no -P $sshPort "$chainFile" "$($srv.SshUser)@$($srv.SshHost):$remoteChainPath"
         }
 
-        Write-Host "`n[4/4] Recargando servidor web remoto ($($srv.ReloadCommand))..." -ForegroundColor Cyan
+        Write-Host "`n[3/3] Recargando servidor web remoto ($($srv.ReloadCommand))..." -ForegroundColor Cyan
         $reloadOutput = ssh -o StrictHostKeyChecking=no -p $sshPort "$($srv.SshUser)@$($srv.SshHost)" "$($srv.ReloadCommand)" 2>&1
         Write-Host "    Respuesta del servidor remoto:" -ForegroundColor Gray
         Write-Host "    $reloadOutput" -ForegroundColor White
         
         Write-Host "[✓] ¡Proceso completado exitosamente para $($srv.Domain)!" -ForegroundColor Green
     } else {
-        Write-Host "[X] No se encontraron los archivos de certificado en $outputDir para transferir." -ForegroundColor Red
+        Write-Host "`n[X] Error: Certbot no pudo generar el certificado. Código de salida: $($proc.ExitCode)" -ForegroundColor Red
     }
 }

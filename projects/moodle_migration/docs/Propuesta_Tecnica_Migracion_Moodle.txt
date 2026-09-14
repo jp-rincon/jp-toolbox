@@ -1,0 +1,122 @@
+================================================================================
+           PLAN TÉCNICO DE MIGRACIÓN Y MODERNIZACIÓN DE MOODLE
+       Estrategia de Salto Generacional (v2.8.2 -> v4.x LTS) y MySQL 8
+================================================================================
+
+ESTADO ACTUAL:   Moodle 2.8.2 (2015) | PHP 5.6 | MySQL 5.5
+ESTADO OBJETIVO: Moodle 4.x LTS (4.5 / 4.4) | PHP 8.2 | MySQL 8.0+
+METODOLOGÍA:     Migración escalonada por hitos en entorno Staging (Docker)
+
+--------------------------------------------------------------------------------
+1. RESUMEN EJECUTIVO Y OBJETIVO
+--------------------------------------------------------------------------------
+El objetivo de este proyecto es actualizar la plataforma educativa institucional
+desde su versión heredada Moodle 2.8.2 hasta la versión de soporte extendido más
+reciente (Moodle 4.x LTS), modernizando al mismo tiempo el motor de base de datos
+desde MySQL 5.5 hasta MySQL 8.0+ y el entorno de ejecución a PHP 8.2.
+
+Debido a que existen más de 9 años de evolución técnica entre ambas versiones,
+NO ES TÉCNICAMENTE FACTIBLE realizar un salto directo. Para garantizar la total
+integridad de los datos (cursos, usuarios, notas, tareas y archivos adjuntos),
+se ejecutará una estrategia de migración escalonada ("stepping stones") sobre
+contenedores Docker en un entorno local aislado. 
+
+Esto garantiza:
+- Cero afectación o riesgo de caída en el servidor productivo actual.
+- Capacidad de auditoría y verificación paso a paso antes del despliegue final.
+- Puntos de restauración (snapshots) seguros en cada hito del proceso.
+
+
+--------------------------------------------------------------------------------
+2. RUTA DE MIGRACIÓN OBLIGATORIA ("STEPPING STONES")
+--------------------------------------------------------------------------------
+El núcleo de Moodle exige versiones intermedias mínimas y requiere cambiar
+progresivamente las versiones de PHP y MySQL:
+
+[ Moodle 2.8.2 ]  -->  [ Moodle 3.2.9 ]  -->  [ Moodle 3.9 LTS ]
+ (PHP 5.6 / 5.5)        (PHP 7.0 / 7.1)        (PHP 7.4 / 5.7)
+       |
+       v
+[ Moodle 4.1 LTS ]  -->  [ Moodle 4.x LTS (Meta Final) ]
+ (PHP 8.1 / 8.0)          (PHP 8.2 / MySQL 8.0+)
+
+Tabla de Hitos Técnicos:
+--------------------------------------------------------------------------------
+Hito            Versión Moodle  PHP        MySQL / MariaDB  Objetivo
+--------------------------------------------------------------------------------
+Línea Base      2.8.2+          PHP 5.6    MySQL 5.5        Restauración fiel backup
+Hito 1          3.2.9 (Puente)  PHP 7.0/7.1 MySQL 5.6/5.7   Migración núcleo inicial
+Hito 2          3.9.x LTS       PHP 7.4    MySQL 5.7        Conversión utf8mb4 / InnoDB
+Hito 3          4.1.x LTS       PHP 8.1    MySQL 8.0        Salto arquitectura Moodle 4
+Hito 4 (Meta)   4.5 LTS (o 4.4) PHP 8.2    MySQL 8.0+       Versión final definitiva
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+3. FACTORES CRÍTICOS Y MITIGACIÓN DE RIESGOS
+--------------------------------------------------------------------------------
+1. Codificación de Base de Datos (utf8 -> utf8mb4):
+   - Moodle 2.8 utilizaba el juego 'utf8' de 3 bytes de MySQL 5.5.
+   - Moodle moderno exige obligatoriamente 'utf8mb4' (soporte Unicode completo y
+     emojis), además de formato de archivo Barracuda e innodb_file_per_table.
+   - Mitigación: Se ejecutará el script oficial CLI (mysql_collation.php) en el
+     Hito 2 para convertir tablas y columnas de forma consistente sin pérdida.
+
+2. Plugins de Terceros y Temas Gráficos:
+   - Los temas antiguos (Clean, Canvas, Base) fueron deprecados y eliminados en
+     Moodle 4. Moodle 4 utiliza el tema estándar moderno "Boost".
+   - Mitigación: Se auditarán los módulos antes de iniciar. Los temas y plugins
+     obsoletos sin soporte serán desactivados antes de los saltos mayores.
+
+3. Ejecución Exclusiva por Consola CLI:
+   - Las actualizaciones masivas de base de datos nunca se deben hacer vía web,
+     ya que los límites de tiempo de HTTP (timeouts 504) corrompen la migración.
+   - Mitigación: Todas las migraciones se ejecutarán con:
+     php admin/cli/upgrade.php --non-interactive
+
+4. Repositorio de Archivos (moodledata):
+   - Además de la base de datos SQL, la carpeta 'moodledata/filedir' contiene los
+     archivos reales de los cursos (tareas, PDFs, recursos).
+   - Mitigación: Se mantendrá la estructura íntegra de moodledata y sus permisos.
+
+
+--------------------------------------------------------------------------------
+4. FASES METODOLÓGICAS DE EJECUCIÓN
+--------------------------------------------------------------------------------
+FASE 1: Preparación del Entorno Local y Réplica en Docker
+- Despliegue de Docker Compose con PHP 5.6 + Apache + MySQL 5.5.
+- Restauración del backup (.sql) y la carpeta moodledata.
+- Validación funcional de la réplica: login administrativo, cursos y usuarios.
+
+FASE 2: Auditoría y Saneamiento Previo
+- Inventario de plugins y temas de terceros en Moodle 2.8.2.
+- Desactivación controlada de extensiones huérfanas sin soporte para Moodle 4.
+- Generación de respaldo Snapshot 0 (Punto de partida limpio).
+
+FASE 3: Proceso de Migración Escalonada (Stepping Stones)
+- Paso 3.1: Actualización a Moodle 3.2.9 con PHP 7.1.
+- Paso 3.2: Ajuste de parámetros MySQL y conversión de base de datos a utf8mb4.
+- Paso 3.3: Actualización a Moodle 3.9 LTS con PHP 7.4 y validación intermedia.
+- Paso 3.4: Migración de motor a MySQL 8.0 y actualización a Moodle 4.1 LTS.
+- Paso 3.5: Actualización a la versión final Moodle 4.x LTS con PHP 8.2.
+
+FASE 4: Pruebas de Calidad e Integridad (QA)
+- Verificación de integridad referencial: usuarios, cursos, matrículas, notas.
+- Comprobación de descarga y apertura de recursos y tareas históricas.
+- Ejecución de tareas programadas (cron) y optimización de índices de base de datos.
+
+FASE 5: Despliegue en el Servidor Definitivo
+- Aprovisionamiento del servidor de producción provisto por el cliente.
+- Carga de base de datos modernizada y sincronización de moodledata.
+- Configuración de certificados SSL, cron institucional y backups programados.
+- Paso a producción definitivo con ventana mínima de indisponibilidad.
+
+
+--------------------------------------------------------------------------------
+5. BENEFICIOS PARA EL CLIENTE
+--------------------------------------------------------------------------------
+- Seguridad y Cumplimiento: Cierre de vulnerabilidades acumuladas por más de 8 años.
+- Experiencia de Usuario: Interfaz 100% responsiva para celulares y tablets.
+- Alto Rendimiento: Mayor velocidad gracias a PHP 8.2 y las mejoras de MySQL 8.0.
+- Cero Riesgo: Todo el proceso se valida exhaustivamente antes de tocar producción.
+================================================================================

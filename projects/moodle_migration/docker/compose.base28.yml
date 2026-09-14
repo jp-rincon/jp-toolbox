@@ -1,0 +1,44 @@
+services:
+  db:
+    image: mysql:5.5
+    container_name: moodle28_db
+    restart: unless-stopped
+    command: >
+      --character-set-server=utf8
+      --collation-server=utf8_unicode_ci
+      --max_allowed_packet=256M
+      --innodb_buffer_pool_size=512M
+      --innodb_file_per_table=1
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-moodle_root_pass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-aulas}
+      MYSQL_USER: ${MYSQL_USER:-aulaprod}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-a1u2l3a4p5r6o7d8}
+    ports:
+      - "${DB_PORT:-33066}:3306"
+    volumes:
+      - db_data_28:/var/lib/mysql
+      - ${PATH_SQL_INIT:-./data/sql}:/docker-entrypoint-initdb.d
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.php56.moodle28
+    container_name: moodle28_web
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    volumes:
+      - ${PATH_MOODLESRC:-./data/moodle_src}:/var/www/html
+      - ${PATH_MOODLEDATA:-./data/moodledata}:/var/moodledata
+    environment:
+      MOODLE_URL: ${MOODLE_URL:-http://localhost:8080}
+      DB_HOST: db
+      DB_NAME: ${MYSQL_DATABASE:-aulas}
+      DB_USER: ${MYSQL_USER:-aulaprod}
+      DB_PASS: ${MYSQL_PASSWORD:-a1u2l3a4p5r6o7d8}
+
+volumes:
+  db_data_28:
