@@ -1,0 +1,22 @@
+# Local secrets & envs
+.env
+.env.*
+!.env.example
+
+# Large data and backups
+*.sql
+*.sql.gz
+*.dump
+*.tar
+*.tar.gz
+*.zip
+*.7z
+
+# Runtime / data directories
+docker/data/
+docker/moodledata/
+docker/mysql_data/
+docker/moodle_src/
+data/
+moodledata/
+mysql_data/

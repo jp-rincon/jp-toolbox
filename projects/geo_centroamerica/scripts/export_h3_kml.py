@@ -47,6 +47,8 @@ PAIS_NOMBRES = {
     "JAM": "Jamaica",
     "HTI": "Haití",
     "BHS": "Bahamas",
+    "CO": "Colombia",
+    "TOT": "Colombia (Total)",
     "CA": "Centroamérica y Caribe"
 }
 
@@ -73,7 +75,7 @@ def get_h3_boundary(cell_id: str):
         logging.warning(f"No se pudo obtener el límite para la celda {cell_id}: {e}")
         return None
 
-def generate_kml_for_query(res: int, country_code: str, output_file: str, db_config: dict):
+def generate_kml_for_query(res: int, country_code: str, output_file: str, db_config: dict, table: str = "geo_total", user_id: int = None):
     """Genera un archivo KML filtrado por país (o global si country_code es None)."""
     column_name = f"h3_cell{res}"
     
@@ -88,17 +90,20 @@ def generate_kml_for_query(res: int, country_code: str, output_file: str, db_con
     where_clause = f"WHERE {column_name} IS NOT NULL AND {column_name} <> ''"
     if country_code:
         where_clause += f" AND country_code = '{country_code}'"
+    if user_id is not None:
+        where_clause += f" AND creation_user = {user_id}"
         
     query = f"""
         SELECT 
             {column_name} AS cell_id,
             COUNT(*) AS total_pois,
             STRING_AGG(DISTINCT country_code, ', ') AS paises,
-            MODE() WITHIN GROUP (ORDER BY name) AS muestra_nombre
-        FROM geo_total
+            MODE() WITHIN GROUP (ORDER BY name) AS muestra_nombre,
+            COALESCE(NULLIF(TRIM(split_part(MODE() WITHIN GROUP (ORDER BY name), ',', 3)), ''), 'Varios / Nacional') AS depto
+        FROM {table}
         {where_clause}
         GROUP BY 1
-        ORDER BY 2 DESC;
+        ORDER BY 5 ASC, 2 DESC;
     """
     
     cursor.execute(query)
@@ -120,60 +125,71 @@ def generate_kml_for_query(res: int, country_code: str, output_file: str, db_con
     <description>Cobertura de Georreferencias H3 Resolucion {res} en {pais_nombre}</description>
     
     <Style id="h3_high_density">
-      <LineStyle><color>ff00aa00</color><width>1.5</width></LineStyle>
-      <PolyStyle><color>7700ff00</color></PolyStyle>
+      <LineStyle><color>ff00ffff</color><width>2.0</width></LineStyle>
+      <PolyStyle><color>6600ffaa</color></PolyStyle>
     </Style>
 
     <Style id="h3_mid_density">
-      <LineStyle><color>ff00aaff</color><width>1.2</width></LineStyle>
-      <PolyStyle><color>7700ffff</color></PolyStyle>
+      <LineStyle><color>ffffaa00</color><width>1.8</width></LineStyle>
+      <PolyStyle><color>55ffaa00</color></PolyStyle>
     </Style>
 
     <Style id="h3_low_density">
-      <LineStyle><color>ff0055ff</color><width>1.0</width></LineStyle>
-      <PolyStyle><color>6600aaff</color></PolyStyle>
+      <LineStyle><color>ffff5500</color><width>1.5</width></LineStyle>
+      <PolyStyle><color>44ff5500</color></PolyStyle>
     </Style>
 """
     
-    kml_body = []
+    # Agrupar por departamento para facilitar navegación en Google Earth
+    from collections import defaultdict
+    deptos = defaultdict(list)
     max_count = max([r[1] for r in rows]) if rows else 1
     
     for row in rows:
-        cell_id, count, paises, muestra = row[0], row[1], row[2], row[3]
+        cell_id, count, paises, muestra, depto = row[0], row[1], row[2], row[3], row[4]
+        deptos[depto].append((cell_id, count, paises, muestra))
         
-        coordinates_str = get_h3_boundary(cell_id)
-        if not coordinates_str:
-            continue
-            
-        if count > (max_count * 0.2):
-            style_id = "#h3_high_density"
-        elif count > (max_count * 0.05):
-            style_id = "#h3_mid_density"
-        else:
-            style_id = "#h3_low_density"
-            
-        name_esc = (muestra or cell_id).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        paises_esc = (paises or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    kml_body = []
+    
+    for depto_name, items in sorted(deptos.items()):
+        kml_body.append(f'\n    <Folder>\n      <name>{depto_name} ({len(items)} celdas)</name>\n')
         
-        placemark = f"""
-    <Placemark>
-      <name>{cell_id} ({count} POIs)</name>
-      <styleUrl>{style_id}</styleUrl>
-      <ExtendedData>
-        <Data name="Celda_H3"><value>{cell_id}</value></Data>
-        <Data name="Total_Georreferencias"><value>{count}</value></Data>
-        <Data name="Paises"><value>{paises_esc}</value></Data>
-        <Data name="Ejemplo_Nombre"><value>{name_esc}</value></Data>
-      </ExtendedData>
-      <Polygon>
-        <outerBoundaryIs>
-          <LinearRing>
-            <coordinates>{coordinates_str}</coordinates>
-          </LinearRing>
-        </outerBoundaryIs>
-      </Polygon>
-    </Placemark>"""
-        kml_body.append(placemark)
+        for item in items:
+            cell_id, count, paises, muestra = item
+            coordinates_str = get_h3_boundary(cell_id)
+            if not coordinates_str:
+                continue
+                
+            if count > 5:
+                style_id = "#h3_high_density"
+            elif count > 1:
+                style_id = "#h3_mid_density"
+            else:
+                style_id = "#h3_low_density"
+                
+            name_esc = (muestra or cell_id).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            paises_esc = (paises or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            
+            placemark = f"""      <Placemark>
+        <name>{name_esc}</name>
+        <styleUrl>{style_id}</styleUrl>
+        <ExtendedData>
+          <Data name="Celda_H3"><value>{cell_id}</value></Data>
+          <Data name="Total_Georreferencias"><value>{count}</value></Data>
+          <Data name="Paises"><value>{paises_esc}</value></Data>
+          <Data name="Referencia"><value>{name_esc}</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>{coordinates_str}</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+      </Placemark>"""
+            kml_body.append(placemark)
+            
+        kml_body.append('\n    </Folder>\n')
         
     kml_footer = """
   </Document>
@@ -219,21 +235,23 @@ def process_all_countries(res: int, out_dir: str, db_config: dict):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generar KMLs de celdas H3 por país o globales")
     parser.add_argument("--res", type=int, choices=[5, 7], default=7, help="Resolución H3 (5 o 7)")
-    parser.add_argument("--country", type=str, help="Código de país (ej: GTM, CRI, PAN, SLV, HND, NIC, BLZ)")
+    parser.add_argument("--country", type=str, help="Código de país (ej: GTM, CRI, PAN, SLV, HND, NIC, BLZ, CO, TOT)")
+    parser.add_argument("--table", type=str, default="geo_total", help="Nombre de la tabla (ej: geo_total, geo_col)")
+    parser.add_argument("--creation-user", type=int, dest="creation_user", help="Filtrar por creation_user (ej: 5004)")
     parser.add_argument("--split-countries", action="store_true", help="Generar un KML individual por cada país en geo_total")
     parser.add_argument("--out", type=str, help="Ruta del archivo KML de salida (si se especifica un único país o global)")
     parser.add_argument("--out-dir", type=str, default="/mnt/k/kml_por_pais/", help="Directorio para guardar KMLs divididos por país")
     parser.add_argument("--host", type=str, default=DEFAULT_DB_CONFIG["host"])
     parser.add_argument("--port", type=int, default=DEFAULT_DB_CONFIG["port"])
     parser.add_argument("--dbname", type=str, default=DEFAULT_DB_CONFIG["dbname"])
-    parser.add_argument("--user", type=str, default=DEFAULT_DB_CONFIG["user"])
+    parser.add_argument("--user", dest="db_user", type=str, default="postgres", help="Usuario de la base de datos")
     parser.add_argument("--password", type=str, default=DEFAULT_DB_CONFIG["password"])
     
     args = parser.parse_args()
     
     config = {
         "dbname": args.dbname,
-        "user": args.user,
+        "user": args.db_user,
         "password": args.password,
         "host": args.host,
         "port": args.port
@@ -243,4 +261,4 @@ if __name__ == "__main__":
         process_all_countries(args.res, args.out_dir, config)
     else:
         out_file = args.out or f"/mnt/k/h3_cobertura_{args.country or 'global'}_res{args.res}.kml"
-        generate_kml_for_query(args.res, args.country, out_file, config)
+        generate_kml_for_query(args.res, args.country, out_file, config, table=args.table, user_id=args.creation_user)

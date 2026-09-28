@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 aux_ssl.txt
+projects/certificados_ssl/config.json
+projects/certificados_ssl/output/
+projects/certificados_ssl/temp_challenge/
+projects/certificados_ssl/certbot/
 
 # OS / editor
 .DS_Store
