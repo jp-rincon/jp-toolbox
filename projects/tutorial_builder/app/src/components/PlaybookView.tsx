@@ -75,7 +75,7 @@ export const PlaybookView: React.FC<PlaybookViewProps> = ({
         {/* Left Sidebar: Table of contents */}
         <aside className="w-72 hidden md:block sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto border-r border-slate-800 p-4 bg-slate-950/40 print:hidden">
           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">
-            Table of contents
+            Tabla de Contenido
           </div>
 
           <nav className="space-y-1">
@@ -216,7 +216,7 @@ export const PlaybookView: React.FC<PlaybookViewProps> = ({
                     onClick={() => onOpenFullVideo(idx)}
                     className="inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-semibold hover:underline"
                   >
-                    <span>Jump to this step in video</span>
+                    <span>Ir a este paso en el video</span>
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>

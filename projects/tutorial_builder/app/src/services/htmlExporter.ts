@@ -292,7 +292,7 @@ export async function generateStandaloneHtml(tutorial: Tutorial): Promise<string
   <div class="layout-wrapper">
     <!-- Left Table of contents -->
     <aside>
-      <div class="toc-title">Table of contents</div>
+      <div class="toc-title">Tabla de Contenido</div>
       <button class="toc-item" onclick="switchMode('video')" style="color: #60a5fa; font-weight: 600; margin-bottom: 0.5rem;">
         ▶ Video Tutorial
       </button>
@@ -347,7 +347,7 @@ export async function generateStandaloneHtml(tutorial: Tutorial): Promise<string
 
             <div style="margin-top: 0.75rem;">
               <button onclick="jumpToVideoChapter(${i})" style="background: none; border: none; color: #60a5fa; cursor: pointer; font-size: 0.8rem; font-weight: 600;">
-                Jump to this step in video ➡
+                Ir a este paso en el video ➡
               </button>
             </div>
           </section>

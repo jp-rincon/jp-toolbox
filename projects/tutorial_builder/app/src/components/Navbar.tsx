@@ -9,8 +9,10 @@ import {
   Check,
   Layers,
   BookOpen,
+  Volume2,
 } from 'lucide-react';
 import { generateStandaloneHtml } from '../services/htmlExporter';
+import { playStandaloneCountdownPreview } from '../services/screenRecorder';
 
 interface NavbarProps {
   tutorial: Tutorial;
@@ -128,6 +130,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Test Audio Button */}
+          <button
+            type="button"
+            onClick={() => playStandaloneCountdownPreview()}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-semibold border border-slate-700 hover:border-blue-500/50 transition shadow-sm"
+            title="Probar sonido de la cuenta regresiva (4, 3, 2, 1...)"
+          >
+            <Volume2 className="w-3.5 h-3.5 text-blue-400" />
+            Probar audio
+          </button>
+
           {/* Tutorials Menu Dropdown */}
           <div className="relative">
             <button

@@ -134,7 +134,7 @@ export const FullVideoPlayerModal: React.FC<FullVideoPlayerModalProps> = ({
         <aside className="w-72 border-r border-slate-800 bg-slate-950/60 flex flex-col">
           <div className="p-4 border-b border-slate-800/80">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Table of contents
+              Tabla de Contenido
             </span>
           </div>
 

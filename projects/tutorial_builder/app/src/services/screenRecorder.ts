@@ -17,15 +17,37 @@ export async function startTabAndVoiceRecording(options: {
   onStreamEnded?: () => void;
   onCountdownTick?: (secondsLeft: number) => void;
 }): Promise<ActiveRecordingSession> {
-  // 1. Capture screen/tab
+  // 1. Capture screen/tab (Edge switches focus to Tobo4 here)
   const displayStream = await navigator.mediaDevices.getDisplayMedia({
     video: {
       displaySurface: 'browser',
     },
-    audio: false, // Llega deshabilitado por defecto para que no tengas que desmarcarlo
+    audio: false, // Llega deshabilitado por defecto
   });
 
-  // 2. Capture microphone voice
+  // Listen if user clicks browser's native "Dejar de compartir" button
+  displayStream.getVideoTracks()[0].onended = () => {
+    options.onStreamEnded?.();
+  };
+
+  // 2. Audible & Visual 3-Second Countdown before recording starts
+  // CRITICAL: Runs BEFORE opening the microphone session, preventing OS/Chromium audio session interruption
+  const originalTitle = document.title;
+  let countdownAudioHandle: { stop: () => void } | null = null;
+  if (options.onCountdownTick) {
+    countdownAudioHandle = playContinuousCountdownAudio();
+
+    for (let c = 3; c > 0; c--) {
+      document.title = `🔴 [ ${c} ] Prepárate...`;
+      options.onCountdownTick(c);
+      await waitMs(1000);
+    }
+    document.title = `🔴 ¡GRABANDO TOBO4!`;
+    options.onCountdownTick(0);
+    countdownAudioHandle = null;
+  }
+
+  // 3. Capture microphone voice now (at tick 0 when recording begins)
   let micStream: MediaStream | null = null;
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
@@ -39,7 +61,7 @@ export async function startTabAndVoiceRecording(options: {
     console.warn('No se pudo acceder al micrófono para la voz:', e);
   }
 
-  // 3. Audio Mixing using AudioContext
+  // 4. Audio Mixing using AudioContext
   const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
   const audioDest = audioCtx.createMediaStreamDestination();
 
@@ -57,14 +79,14 @@ export async function startTabAndVoiceRecording(options: {
     micSource.connect(audioDest);
   }
 
-  // 4. Combined Stream (Screen video + Mixed audio tracks if any)
+  // 5. Combined Stream (Screen video + Mixed audio tracks if any)
   const audioTracks = audioDest.stream.getAudioTracks();
   const combinedStream = new MediaStream([
     ...displayStream.getVideoTracks(),
     ...(audioTracks.length > 0 ? audioTracks : []),
   ]);
 
-  // 5. Select compatible MediaRecorder mime type
+  // 6. Select compatible MediaRecorder mime type
   const mimeTypes = [
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
@@ -91,7 +113,7 @@ export async function startTabAndVoiceRecording(options: {
     }
   };
 
-  // 6. Speech Recognition Setup (Web Speech API)
+  // 7. Speech Recognition Setup (Web Speech API)
   let accumulatedTranscript = '';
   let currentInterim = '';
   let recognitionInstance: any = null;
@@ -154,27 +176,14 @@ export async function startTabAndVoiceRecording(options: {
     }
   }
 
-  // 7. Audible & Visual 3-Second Countdown before recording starts
-  const originalTitle = document.title;
-  if (options.onCountdownTick) {
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume().catch(() => {});
-    }
-    for (let c = 3; c > 0; c--) {
-      document.title = `🔴 [ ${c} ] Prepárate...`;
-      options.onCountdownTick(c);
-      playCountdownBeep(audioCtx, 520, 0.16);
-      await waitMs(1000);
-    }
-    document.title = `🔴 ¡GRABANDO TOBO4!`;
-    options.onCountdownTick(0);
-    playCountdownBeep(audioCtx, 880, 0.25);
-  }
-
   // Helper to cleanup hardware streams AFTER recording finishes
   const cleanupStreams = () => {
-    isActivelyRecording = false;
+    if (countdownAudioHandle) {
+      countdownAudioHandle.stop();
+      countdownAudioHandle = null;
+    }
     document.title = originalTitle || 'Tutorial Builder';
+    isActivelyRecording = false;
     if (recognitionInstance) {
       try {
         recognitionInstance.stop();
@@ -202,6 +211,11 @@ export async function startTabAndVoiceRecording(options: {
 
   return {
     cancel: () => {
+      if (countdownAudioHandle) {
+        countdownAudioHandle.stop();
+        countdownAudioHandle = null;
+      }
+      document.title = originalTitle || 'Tutorial Builder';
       if (mediaRecorder.state !== 'inactive') {
         try {
           mediaRecorder.stop();
@@ -249,21 +263,97 @@ function waitMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function playCountdownBeep(ctx: AudioContext, freq = 520, duration = 0.15) {
-  try {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq, ctx.currentTime);
-    gain.gain.setValueAtTime(0.35, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + duration);
-  } catch (e) {
-    console.warn('Error playing beep:', e);
+let cachedCleanWavUrl: string | null = null;
+
+function getCleanCountdownWavUrl(): string {
+  if (cachedCleanWavUrl) return cachedCleanWavUrl;
+
+  const sampleRate = 22050;
+  const totalDuration = 3.6;
+  const numSamples = Math.floor(sampleRate * totalDuration);
+  const buffer = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(buffer);
+
+  // RIFF identifier
+  view.setUint32(0, 0x52494646, false); // "RIFF"
+  view.setUint32(4, 36 + numSamples * 2, true);
+  view.setUint32(8, 0x57415645, false); // "WAVE"
+  // fmt chunk
+  view.setUint32(12, 0x666d7420, false); // "fmt "
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // 1 channel (mono)
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  // data chunk
+  view.setUint32(36, 0x64617461, false); // "data"
+  view.setUint32(40, numSamples * 2, true);
+
+  // Micro-dither (+-1 / 32767) keeps Edge/Chromium media subsystem continuously streaming
+  for (let i = 0; i < numSamples; i++) {
+    view.setInt16(44 + i * 2, i % 2 === 0 ? 1 : -1, true);
   }
+
+  // Classic 3-second countdown: 3, 2, 1 y ¡Arranque!
+  const beeps = [
+    { start: 0.0, freq: 520, dur: 0.16 }, // Tick 3
+    { start: 1.0, freq: 520, dur: 0.16 }, // Tick 2
+    { start: 2.0, freq: 520, dur: 0.16 }, // Tick 1
+    { start: 3.0, freq: 880, dur: 0.28 }, // Tick 0 (¡Arranque!)
+  ];
+
+  for (const beep of beeps) {
+    const startIndex = Math.floor(beep.start * sampleRate);
+    const beepSamples = Math.floor(beep.dur * sampleRate);
+
+    for (let i = 0; i < beepSamples; i++) {
+      const idx = startIndex + i;
+      if (idx >= numSamples) break;
+
+      const t = i / sampleRate;
+      const attack = Math.min(1, i / (sampleRate * 0.012));
+      const release = Math.min(1, (beepSamples - i) / (sampleRate * 0.04));
+      const envelope = attack * release;
+      const sample = Math.sin(2 * Math.PI * beep.freq * t) * envelope * 0.85;
+
+      view.setInt16(44 + idx * 2, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+    }
+  }
+
+  const blob = new Blob([buffer], { type: 'audio/wav' });
+  cachedCleanWavUrl = URL.createObjectURL(blob);
+  return cachedCleanWavUrl;
+}
+
+function playContinuousCountdownAudio(): { stop: () => void } {
+  let audio = document.getElementById('tb-countdown-audio') as HTMLAudioElement;
+  if (!audio) {
+    audio = document.createElement('audio');
+    audio.id = 'tb-countdown-audio';
+    audio.style.display = 'none';
+    document.body.appendChild(audio);
+  }
+  audio.src = getCleanCountdownWavUrl();
+  audio.volume = 1.0;
+  audio.currentTime = 0;
+  audio.play().catch((err) => {
+    console.warn('Error al reproducir audio de cuenta regresiva:', err);
+  });
+
+  return {
+    stop: () => {
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+      } catch (e) {}
+    },
+  };
+}
+
+export function playStandaloneCountdownPreview(): { stop: () => void } {
+  return playContinuousCountdownAudio();
 }
 
 export function extractThumbnailFromVideo(videoBlob: Blob): Promise<string> {

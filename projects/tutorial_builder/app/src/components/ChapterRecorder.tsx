@@ -7,9 +7,11 @@ import {
   Loader2,
   CheckCircle2,
   Trash2,
+  Volume2,
 } from 'lucide-react';
 import {
   startTabAndVoiceRecording,
+  playStandaloneCountdownPreview,
 } from '../services/screenRecorder';
 import type { ActiveRecordingSession } from '../services/screenRecorder';
 import { toPlayableVideoUrl } from '../utils/media';
@@ -121,30 +123,14 @@ export const ChapterRecorder: React.FC<ChapterRecorderProps> = ({
 
   if (countdown !== null && countdown > 0) {
     return (
-      <>
-        {/* Fullscreen Fixed High-Visibility Overlay across entire window */}
-        <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md select-none">
-          <div className="text-sm font-bold text-blue-400 uppercase tracking-widest mb-5">
-            Prepárate para hablar en Tobo4...
-          </div>
-          <div className="w-36 h-36 rounded-full bg-blue-600/30 border-4 border-blue-500 flex items-center justify-center text-7xl font-black text-white shadow-[0_0_60px_rgba(59,130,246,0.9)] animate-pulse">
-            {countdown}
-          </div>
-          <p className="text-sm text-slate-200 mt-6 font-medium">
-            Escucha los pitidos en tus audífonos: cuando suene el último pitido agudo, empieza a hablar.
-          </p>
-        </div>
-
-        {/* Card Placeholder */}
-        <div className="flex flex-col items-center justify-center p-8 bg-slate-900/90 rounded-2xl border-2 border-blue-500 shadow-2xl text-center">
-          <div className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-2">
-            Iniciando grabación...
-          </div>
-          <div className="w-14 h-14 rounded-full bg-blue-600/20 border-2 border-blue-500 flex items-center justify-center text-2xl font-bold text-white">
-            {countdown}
-          </div>
-        </div>
-      </>
+      <div className="flex flex-col items-center justify-center p-8 bg-slate-900/80 rounded-xl border border-blue-500/40 text-center">
+        <p className="text-sm font-semibold text-blue-400 mb-1">
+          Iniciando grabación...
+        </p>
+        <p className="text-xs text-slate-400">
+          Escucha los 3 pitidos y el pitido de arranque (3.. 2.. 1..) para hablar.
+        </p>
+      </div>
     );
   }
 
@@ -205,7 +191,15 @@ export const ChapterRecorder: React.FC<ChapterRecorderProps> = ({
             className="w-full h-full object-contain"
           />
 
-          <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-sm p-1.5 rounded-lg border border-slate-700 opacity-90 group-hover:opacity-100 transition">
+          <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-sm p-1.5 rounded-lg border border-slate-700 shadow-md">
+            <button
+              type="button"
+              onClick={() => playStandaloneCountdownPreview()}
+              className="flex items-center gap-1 text-[11px] px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded border border-slate-600 transition"
+              title="Escuchar los pitidos de prueba antes de regrabar"
+            >
+              <Volume2 className="w-3 h-3 text-blue-400" /> Probar audio
+            </button>
             <button
               type="button"
               onClick={handleStart}
@@ -251,13 +245,24 @@ export const ChapterRecorder: React.FC<ChapterRecorderProps> = ({
         Selecciona la pestaña de Tobo4, escucha la cuenta regresiva (3.. 2.. 1..) y habla por el micrófono describiendo la acción.
       </p>
 
-      <button
-        type="button"
-        onClick={handleStart}
-        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20 transition active:scale-95"
-      >
-        <Video className="w-4 h-4" /> Grabar Pestaña y Voz (Micrófono)
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleStart}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20 transition active:scale-95"
+        >
+          <Video className="w-4 h-4" /> Grabar Pestaña y Voz (Micrófono)
+        </button>
+
+        <button
+          type="button"
+          onClick={() => playStandaloneCountdownPreview()}
+          className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-medium border border-slate-700 transition"
+          title="Escucha los 3 pitidos y el pitido de arranque"
+        >
+          <Volume2 className="w-3.5 h-3.5 text-blue-400" /> Probar audio
+        </button>
+      </div>
     </div>
   );
 };
