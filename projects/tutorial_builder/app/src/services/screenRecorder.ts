@@ -93,7 +93,10 @@ export async function startTabAndVoiceRecording(options: {
 
   // 6. Speech Recognition Setup (Web Speech API)
   let accumulatedTranscript = '';
+  let currentInterim = '';
   let recognitionInstance: any = null;
+  let isActivelyRecording = true;
+  let isRecognitionRunning = false;
   const SpeechRecognition =
     (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -104,22 +107,47 @@ export async function startTabAndVoiceRecording(options: {
       recognitionInstance.continuous = true;
       recognitionInstance.interimResults = true;
 
+      recognitionInstance.onstart = () => {
+        isRecognitionRunning = true;
+      };
+
       recognitionInstance.onresult = (event: any) => {
         let interim = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           const trans = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + trans;
+            accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + trans.trim();
           } else {
             interim += trans;
           }
         }
-        const fullCurrent = (accumulatedTranscript + (interim ? ' ' + interim : '')).trim();
+        currentInterim = interim.trim();
+        const fullCurrent = (accumulatedTranscript + (currentInterim ? ' ' + currentInterim : '')).trim();
         options.onTranscriptUpdate?.(fullCurrent);
       };
 
       recognitionInstance.onerror = (err: any) => {
-        console.warn('SpeechRecognition error:', err);
+        const errType = err?.error || err;
+        console.warn('SpeechRecognition notification/error:', errType);
+      };
+
+      // Chrome/Edge naturally ends speech recognition sessions after ~60s or pauses in speech ('no-speech').
+      // Auto-restart keeps recognition running uninterrupted for long recordings (3m, 5m, 10m+)!
+      recognitionInstance.onend = () => {
+        isRecognitionRunning = false;
+        if (isActivelyRecording) {
+          try {
+            recognitionInstance.start();
+          } catch (e) {
+            setTimeout(() => {
+              if (isActivelyRecording && !isRecognitionRunning) {
+                try {
+                  recognitionInstance.start();
+                } catch (err) {}
+              }
+            }, 150);
+          }
+        }
       };
     } catch (err) {
       console.warn('No se pudo inicializar SpeechRecognition:', err);
@@ -145,6 +173,7 @@ export async function startTabAndVoiceRecording(options: {
 
   // Helper to cleanup hardware streams AFTER recording finishes
   const cleanupStreams = () => {
+    isActivelyRecording = false;
     document.title = originalTitle || 'Tutorial Builder';
     if (recognitionInstance) {
       try {
@@ -203,11 +232,13 @@ export async function startTabAndVoiceRecording(options: {
       // Extract a thumbnail frame from the video with robust fallback
       const thumbnailDataUrl = await extractThumbnailFromVideo(videoBlob);
 
+      const finalFullTranscript = (accumulatedTranscript + (currentInterim ? ' ' + currentInterim : '')).trim();
+
       return {
         videoBlob,
         videoUrl,
         thumbnailDataUrl,
-        transcript: accumulatedTranscript.trim(),
+        transcript: finalFullTranscript,
         durationSeconds,
       };
     },

@@ -12,12 +12,22 @@ export function toPlayableVideoUrl(video?: Blob | string): string {
   if (typeof video === 'string' && video.startsWith('data:video/')) {
     if (stringUrlCache.has(video)) return stringUrlCache.get(video)!;
     try {
-      const parts = video.split(',');
-      const mime = parts[0].match(/:(.*?);/)?.[1] || 'video/webm';
-      const bstr = atob(parts[1]);
-      const n = bstr.length;
-      const u8arr = new Uint8Array(n);
-      for (let i = 0; i < n; i++) {
+      const b64Idx = video.indexOf(';base64,');
+      let b64 = '';
+      let mime = 'video/webm';
+      if (b64Idx !== -1) {
+        b64 = video.substring(b64Idx + 8);
+        const mimeMatch = video.substring(0, b64Idx).match(/^data:([^;]+)/);
+        if (mimeMatch) mime = mimeMatch[1];
+      } else {
+        const commaIdx = video.lastIndexOf(',');
+        b64 = commaIdx !== -1 ? video.substring(commaIdx + 1) : video;
+      }
+
+      const bstr = atob(b64);
+      const len = bstr.length;
+      const u8arr = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
         u8arr[i] = bstr.charCodeAt(i);
       }
       const blob = new Blob([u8arr], { type: mime });
