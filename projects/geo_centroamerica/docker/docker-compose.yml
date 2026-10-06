@@ -7,16 +7,18 @@ services:
       dockerfile: Dockerfile
     container_name: osm_centroamerica_gis
     environment:
-      POSTGRES_DB: osm_centroamerica
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: ${POSTGRES_DB:-osm_centroamerica}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
     ports:
-      - "5434:5432"
+      - "${DB_PORT:-5434}:5432"
     volumes:
       - osm_data:/var/lib/postgresql/data
       - ../scripts:/scripts
-      - ./data:/data
+      # Los archivos pesados (.osm.pbf) pueden residir en el disco externo K: vía GEO_DATA_PATH
+      - ${GEO_DATA_PATH:-./data}:/data
     restart: unless-stopped
 
 volumes:
   osm_data:
+

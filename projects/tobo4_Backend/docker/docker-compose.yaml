@@ -1,17 +1,64 @@
 services:
   citus:
-    image: citusdata/citus:12.1
+    image: citusdata/citus:12.1-postgis
     container_name: citus_postgres
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     environment:
-      - POSTGRES_PASSWORD=bigBleu5
+      - POSTGRES_DB=${POSTGRES_DB:-tobodb}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-bigBleu5}
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - citus_data_container:/var/lib/postgresql/data
-      # Ajustamos la sintaxis para que Windows y Docker no se confundan con el disco K
-      - /k/citus_data/backup:/docker-entrypoint-initdb.d/backup_dir
+      # Directorio de backups/dumps en disco externo K:
+      - ${BACKUP_DIR:-K:/citus_data/backup}:/docker-entrypoint-initdb.d/backup_dir
+      - ${BACKUP_DIR:-K:/citus_data/backup}:/backup_dir
     restart: unless-stopped
+    networks:
+      - teleint
+
+  redis:
+    image: redis:latest
+    container_name: redis_tobo4
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - teleint
+
+  rabbitmq:
+    image: rabbitmq:3.8-management
+    container_name: rabbit_tobo4
+    ports:
+      - "${RABBIT_PORT:-5672}:5672"
+      - "${RABBIT_MGMT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks:
+      - teleint
+
+  tcp-relay:
+    image: cloudamqp/websocket-tcp-relay
+    container_name: tcp_relay_tobo4
+    command: --upstream tcp://rabbitmq:5672
+    ports:
+      - "${TCP_RELAY_PORT:-15670}:15670"
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+    networks:
+      - teleint
 
 volumes:
   citus_data_container:
+  redis_data:
+  rabbitmq_data:
+
+networks:
+  teleint:
+    name: teleint

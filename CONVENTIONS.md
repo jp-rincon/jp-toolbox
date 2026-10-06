@@ -30,3 +30,17 @@ Tags sugeridos (ligeros, para volver atrás rápido):
 Regla práctica:
 - tagea cuando algo “ya está probado” localmente y no querés volver a romperlo.
 
+## Almacenamiento y Disco Externo (K:)
+
+Dado que el disco principal `C:` tiene capacidad limitada, seguimos esta estrategia:
+
+1. **Ubicación de datos de Docker Desktop**:
+   - Todo el motor de Docker (imágenes, capas y named volumes) se configura para vivir en el disco externo en `Settings -> Resources -> Advanced -> Disk image location` apuntando a `K:\Docker\disk`.
+   - **Bases de datos (PostgreSQL/MySQL)**: Usa siempre **Docker Named Volumes** (ej. `Tobo3PostgresData`, `DuePostgresData`, `citus_data_container`). Al estar dentro del disco virtual en `K:`, tienen soporte POSIX nativo de Linux (permisos `0700`, usuario `postgres`), evitando los errores de permisos que ocurren al hacer bind-mount directo en carpetas NTFS de Windows.
+
+2. **Archivos masivos fuera de Docker (Dumps SQL, .osm.pbf, etc.)**:
+   - Nunca guardes dumps ni datasets masivos dentro del repo en `C:`.
+   - Parametriza en `docker-compose.yml` y `.env.example` una variable de ruta (ej. `GEO_DATA_PATH=K:/geo_centroamerica/data` o `BACKUP_DIR=K:/citus_data/backup`).
+   - Usa barras diagonales (`/`) en las rutas de Windows en docker-compose (ej: `K:/carpeta/datos`).
+
+
