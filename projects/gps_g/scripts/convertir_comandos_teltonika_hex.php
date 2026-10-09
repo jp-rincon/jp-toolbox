@@ -1,0 +1,80 @@
+<?php
+/**
+ * Script para convertir comandos ASCII de Teltonika al formato Hexadecimal Codec 12
+ * utilizando las funciones de consolidación del repositorio.
+ */
+
+// Ajusta la ruta según la ubicación real de tu archivo protocol.php
+require_once 'comandos_teltonika/server/protocol/protocol.php';
+
+$comandos_raw = array(
+    "setparam 30000:01345448010000D1;30001:01989D4801000021;30002:01C5BD3001000009",
+    "setparam 30003:012B3D480100004C;30004:01E7F24701000079;30005:01A15748010000C5",
+    "setparam 30006:01306E49010000BB;30007:015C72D401000024;30008:010AB9B1040000CE",
+    "setparam 30009:013F774901000010;30010:01096649010000FE;30011:01FF4E8B010000C6",
+    "setparam 30012:01EC75490100000E;30013:019C6649010000A4;30014:010B202C010000F4",
+    "setparam 30015:01D84048010000E6;30016:010F91C0010000F1;30017:018D589F010000E6",
+    "setparam 30018:01C9574901000028;30019:0154948F090000AA;30020:0115E14701000057",
+    "setparam 30021:0199B2B104000056;30022:011DDB47010000CF;30023:01C1DF4701000069",
+    "setparam 30024:0194EA9E01000068;30025:013F484801000074;30026:0115FAB104000016",
+    "setparam 30027:011E502C01000029;30028:01B08530010000C0;30029:0162FE9D01000043",
+    "setparam 30030:01222A2C01000069;30031:01D6654901000050;30032:017E5D4801000098",
+    "setparam 30033:01E1EE480100000C;30034:01880CA201000052;30035:011E763001000067",
+    "setparam 30036:01EB5A4801000093;30037:01960248010000EA;30038:0173963001000034",
+    "setparam 30039:01EAC6B1040000E5;30040:0103C49E01000006;30041:018E052D01000050",
+    "setparam 30042:01E26830010000B6;30043:0121FE4701000075;30044:015DCDB101000022",
+    "setparam 30045:019D684701000024;30046:01897E4701000043;30047:010BE847010000EC",
+    "setparam 30048:01003FD801000060;30049:01E3E14701000097;30050:01EC70DC010000BC",
+    "setparam 30051:0153262C010000E7;30052:0167779F01000097;30053:0195FD9D010000FA",
+    "setparam 30054:01621E2D01000008;30055:01CAF147010000CB;30056:012E362C01000049",
+    "setparam 30057:019B7D4701000038;30058:01666849010000BB;30059:01BC3BB20100008E",
+    "setparam 30060:018B392D0100001E;30061:011263470100009A;30062:01C9389F0100005E",
+    "setparam 30063:01136447010000FC;30064:017F634901000006;30065:013B983001000042",
+    "setparam 30066:01A24A480100000C;30067:0155C2B1040000D9;30068:010F6449010000CF",
+    "setparam 30069:011BBEA1010000FE;30070:010B30D8010000F7;30071:011F644701000081",
+    "setparam 30072:01F44D48010000C1;30073:015DF247010000B1;30074:018E652C010000CE",
+    "setparam 30075:016EEC47010000DB;30076:01B3AE9E010000AD;30077:01ABCE2C010000D0",
+    "setparam 30078:01AE4E49010000E1;30079:01A9C43001000029;30080:01040E2C0100008A",
+    "setparam 30081:015E074801000006;30082:0125FA47010000B6;30083:0118632C01000051",
+    "setparam 30084:0112AAEE01000071;30085:010112F1010000A0;30086:011059D8010000B6",
+    "setparam 30087:01C2FA9E01000088;30088:019D58D901000054;30089:0127169E010000B1",
+    "setparam 30090:017F4948010000CC;30091:01BE039F010000B7;30092:012FCB681B0000FA",
+    "setparam 30093:013A749E01000032"
+);
+
+$datosCp_dummy = array(
+    'serie' => 'FMB920',
+    'version' => 'TELTONIKA',
+    'id' => '000000000000000'
+);
+
+function invertirHexPorParejas($hex) {
+    $chunks = str_split($hex, 2);
+    return implode('', array_reverse($chunks));
+}
+
+function callbackInvertir($matches) {
+    return ':' . invertirHexPorParejas($matches[1]);
+}
+
+function transformarComandoRaw($cmd) {
+    return preg_replace_callback('/:([0-9A-Fa-f]{16})/', 'callbackInvertir', $cmd);
+}
+
+echo "RESULTADOS DE CONVERSIÓN (CODEC 12):\n";
+echo str_repeat("-", 80) . "\n";
+
+foreach ($comandos_raw as $index => $cmd) {
+    $cmd_transformado = transformarComandoRaw($cmd);
+    
+    // La función consolidarComandoEspecial realiza todo el trabajo pesado:
+    // 1. Convierte el texto a Hexadecimal ASCII.
+    // 2. Calcula las longitudes del paquete y del comando.
+    // 3. Genera la estructura Codec 12 completa.
+    // 4. Calcula y concatena el CRC-16 Modbus.
+    $resultado_hex = consolidarComandoEspecial($cmd_transformado, $datosCp_dummy);
+    
+    echo "[" . ($index + 1) . "] Comando original: $cmd\n";
+    echo "Comando transformado: $cmd_transformado\n";
+    echo "HEX: $resultado_hex\n\n";
+}
