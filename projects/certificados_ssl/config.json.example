@@ -14,6 +14,14 @@
       "RemoteKeyFile": "private.key",
       "RemoteChainFile": "ca-bundle.crt",
       "ReloadCommand": "sudo service httpd reload"
+    },
+    {
+      "Name": "Servidor Windows Nginx (DNS Manual)",
+      "Domain": "video.midominio.com",
+      "ValidationType": "dns-manual",
+      "DeployType": "rdp-manual",
+      "Webserver": "nginx",
+      "Notes": "Validar via TXT en cPanel. Copiar por RDP y recargar con nginx -s reload."
     }
   ]
 }

@@ -38,6 +38,12 @@ if ($All) {
 
 # Procesar cada servidor
 foreach ($srv in $targetServers) {
+    # Servidores con validación DNS manual (ej. Windows / RDP / cPanel)
+    if ($srv.ValidationType -match "dns") {
+        & (Join-Path $PSScriptRoot "solicitar_ssl_dns.ps1") -Domain $srv.Domain
+        continue
+    }
+
     $sshPort = if ($srv.SshPort) { $srv.SshPort } else { 22 }
 
     # Configurar autenticación por contraseña vía SSH_ASKPASS
