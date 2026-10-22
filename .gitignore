@@ -7,6 +7,7 @@ projects/certificados_ssl/config.json
 projects/certificados_ssl/output/
 projects/certificados_ssl/temp_challenge/
 projects/certificados_ssl/certbot/
+projects/aws_glacier/output/
 
 # OS / editor
 .DS_Store
